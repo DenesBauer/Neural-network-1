@@ -41,7 +41,8 @@ float Network::logistic(float x) {
 }
 
 float Network::logistic_derivative(float x) {
-	return logistic(x) * (1  - logistic(x));
+	float l = logistic(x);
+	return  l * (1 - l);
 }
 
 float Network::activate(float x) {
@@ -52,7 +53,24 @@ float Network::activate_derivative(float x) {
 	return logistic_derivative(x);
 }
 
+std::vector<float> softmax(std::vector<float> v) {
+	std::vector<float> r(v.size(), 0);
+	float max = *std::max_element(v.begin(), v.end());
+	float sum = 0;
+	for (int i = 0; i < v.size(); i++) {
+		r[i] = exp(v[i] - max);
+		sum += r[i];
+	}
+	for (int i = 0; i < v.size(); i++) {
+		r[i] /= sum;
+	}
+	return r;
+}
 
+float cross_entropy(float expected, float x) {
+	//expected = clamp(1e-7, 1 - 1e-7, x);
+	return -(expected * std::log(x) + (1 - expected) * std::log(1 - x));
+}
 
 Network_state Network::construct_network_state() {
 	Network_state network_state{ std::vector<std::vector<float>>() };
@@ -98,19 +116,21 @@ Network_state Network::execute(std::vector<float> input_layer) {
 			eval[n_layer][n_neuron] = sum;
 		}
 	}
+	eval[network.size() - 1] = softmax(eval[network.size() - 1]);
 	return eval;
 }
 
 Network_state Network::calculate_errors(std::vector<float> expected_output, Network_state eval) {
 	Network_state error = construct_network_state();
 	for (int n_neuron = 0; n_neuron < network[network.size() - 1].size();n_neuron++) {
-		error[network.size() - 1][n_neuron] = eval[eval.size() - 1][n_neuron] - expected_output[n_neuron];
+		error[network.size() - 1][n_neuron] = eval[network.size() - 1][n_neuron] - expected_output[n_neuron];
 	}
 	for (int n_layer = network.size() - 2; n_layer >= 0; n_layer--) {
 		for (int n_neuron = 0; n_neuron < network[n_layer].size();n_neuron++) {
-			for (int n_forward_connection = 0; n_forward_connection < network[n_layer + 1].size();n_forward_connection++) {
-				error[n_layer][n_neuron] += activate_derivative(eval[n_layer][n_neuron]) *
-					error[n_layer + 1][n_forward_connection] * network[n_layer + 1][n_forward_connection][n_neuron];
+			float derivative = activate_derivative(eval[n_layer][n_neuron]);
+			for (int n_forward_connection = 0; n_forward_connection < network[n_layer + 1].size(); n_forward_connection++) {
+				error[n_layer][n_neuron] += derivative *
+					error[n_layer + 1][n_forward_connection] * network[n_layer + 1][n_forward_connection][n_neuron] / network[n_layer + 1].size();
 			}
 
 		}
@@ -126,7 +146,7 @@ Network_gradient Network::calculate_gradients(Network_state eval, Network_state 
 			gradient.biases[n_layer][n_neuron] = error[n_layer][n_neuron];
 			for (int n_connection = 0; n_connection < network[n_layer][n_neuron].size();n_connection++) {
 				gradient.weights[n_layer][n_neuron][n_connection] =
-					eval[n_layer - 1][n_connection] * error[n_layer][n_neuron];
+					activate(eval[n_layer - 1][n_connection]) * error[n_layer][n_neuron];
 			}
 		}
 	}
@@ -136,7 +156,7 @@ Network_gradient Network::calculate_gradients(Network_state eval, Network_state 
 void Network::apply_gradient(float learning_rate, Network_gradient network_gradient) {
 	for (int n_layer = 1; n_layer < network_gradient.weights.size(); n_layer++) {
 		for (int n_neuron = 0; n_neuron < network_gradient.weights[n_layer].size();n_neuron++) {
-			network[n_layer][n_neuron].bias += learning_rate * network_gradient.biases[n_layer][n_neuron];
+			network[n_layer][n_neuron].bias -= learning_rate * network_gradient.biases[n_layer][n_neuron];
 			for (int n_connection = 0; n_connection < network_gradient.weights[n_layer][n_neuron].size(); n_connection++) {
 				network[n_layer][n_neuron][n_connection] -= learning_rate * network_gradient.weights[n_layer][n_neuron][n_connection];
 			}
@@ -144,12 +164,12 @@ void Network::apply_gradient(float learning_rate, Network_gradient network_gradi
 	}
 }
 
-void Network::randomize_network() {
+void Network::randomize_network(float delta) {
 	for (int n_layer = 1; n_layer < network.size(); n_layer++) {
 		for (int n_neuron = 0; n_neuron < network[n_layer].size(); n_neuron++) {
-			network[n_layer][n_neuron].bias = map(0, 200, -1, 1, rand() % 200);
+			network[n_layer][n_neuron].bias = (rand() / (float)RAND_MAX) * 2 * delta - delta;//map(0, RAND_MAX, -delta, delta, rand());
 			for (int n_connection = 0; n_connection < network[n_layer][n_neuron].weights.size(); n_connection++) {
-				network[n_layer][n_neuron][n_connection] = map(0, 200, -1, 1, rand() % 200);
+				network[n_layer][n_neuron][n_connection] = (rand() / (float)RAND_MAX) * 2 * delta - delta;//map(0, RAND_MAX, -delta, delta, rand());
 			}
 		}
 	}
@@ -166,4 +186,17 @@ int Network::get_output_max(Network_state network_state) {
 		}
 	}
 	return max_id;
+}
+
+const bool Network::check_network_state(const Network_state& state) {
+	for (int n_layer = 0; n_layer < network.size(); n_layer++) {
+		for (int n_neuron = 0; n_neuron < network[n_layer].size(); n_neuron++) {
+			for (int n_connection = 0; n_connection < network[n_layer][n_neuron].weights.size(); n_connection++) {
+				if (!std::isfinite(state.network_state[n_layer][n_neuron])) {
+					return false;
+				}
+			}
+		}
+	}
+	return true;
 }

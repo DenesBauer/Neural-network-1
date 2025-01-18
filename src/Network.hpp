@@ -29,6 +29,9 @@ public:
 	int size() {
 		return network_state.size();
 	}
+	const std::vector<std::vector<float>> const_get_state() {
+		return network_state;
+	}
 };
 struct Network_gradient {
 	std::vector<std::vector<float>> biases;
@@ -38,17 +41,12 @@ struct Network_gradient {
 	// Useful for building the first gradient from an empty  gradient
 
 	void operator+=(const Network_gradient& r) {
-		for (int n_layer = 0; n_layer < r.weights.size(); n_layer++) {
-			if (n_layer >= weights.size()) {
-				biases.push_back(std::vector<float>(r.weights[n_layer].size()));
-				weights.push_back(std::vector<std::vector<float>>());
-			}
-			for (int n_neuron = 0; n_neuron < r.weights[n_layer].size(); n_neuron++) {
-				if (n_neuron >= weights[n_layer].size()) {
-					weights[n_layer].push_back(std::vector<float>(r.weights[n_layer][n_neuron].size()));
-				}
+		for (int n_layer = 0; n_layer < weights.size(); n_layer++) {
+
+			for (int n_neuron = 0; n_neuron < weights[n_layer].size(); n_neuron++) {
+
 				biases[n_layer][n_neuron] += r.biases[n_layer][n_neuron];
-				for (int n_connection = 0; n_connection < r.weights[n_layer][n_neuron].size();n_connection++) {
+				for (int n_connection = 0; n_connection < weights[n_layer][n_neuron].size();n_connection++) {
 					weights[n_layer][n_neuron][n_connection] += r.weights[n_layer][n_neuron][n_connection];
 				}
 			}
@@ -74,6 +72,11 @@ public:
 	Network_state calculate_errors(std::vector<float> expected_output, Network_state network_state);
 	Network_gradient calculate_gradients(Network_state eval_state, Network_state error_state);
 	void apply_gradient(float learning_rate, Network_gradient network_gradient);
-	void randomize_network();
+	void randomize_network(float delta);
 	int get_output_max(Network_state network_state);
+	const bool check_network_state(const Network_state& state);
 };
+
+std::vector<float> softmax(std::vector<float> v);
+
+float cross_entropy(float expected, float x);
