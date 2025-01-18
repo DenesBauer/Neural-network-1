@@ -66,6 +66,9 @@ public:
 	float logistic_derivative(float x);
 	float activate(float x);
 	float activate_derivative(float x);
+	std::vector<float> softmax(std::vector<float> v);
+	float cross_entropy_binary(float expected, float x);
+	float cross_entropy(const std::vector<float>& v_true, const std::vector<float>& v_predicted);
 	Network_state construct_network_state();
 	Network_gradient construct_network_gradient();
 	Network_state execute(std::vector<float> input_layer);
@@ -77,6 +80,4 @@ public:
 	const bool check_network_state(const Network_state& state);
 };
 
-std::vector<float> softmax(std::vector<float> v);
 
-float cross_entropy(float expected, float x);

@@ -4,7 +4,7 @@ float map(float min1, float max1, float min2, float max2, float x) {
 	return (x - min1) / (max1 - min1) * (max2 - min2) + min2;
 }
 
-float clamp(float min, float max, float x) {
+float clip(float min, float max, float x) {
 	return std::max(min, std::min(max, x));
 }
 
@@ -53,7 +53,7 @@ float Network::activate_derivative(float x) {
 	return logistic_derivative(x);
 }
 
-std::vector<float> softmax(std::vector<float> v) {
+std::vector<float> Network::softmax(std::vector<float> v) {
 	std::vector<float> r(v.size(), 0);
 	float max = *std::max_element(v.begin(), v.end());
 	float sum = 0;
@@ -67,9 +67,18 @@ std::vector<float> softmax(std::vector<float> v) {
 	return r;
 }
 
-float cross_entropy(float expected, float x) {
-	//expected = clamp(1e-7, 1 - 1e-7, x);
+float Network::cross_entropy_binary(float expected, float x) {
+	expected = clip(1e-7, 1 - 1e-7, x);
 	return -(expected * std::log(x) + (1 - expected) * std::log(1 - x));
+}
+
+float Network::cross_entropy(const std::vector<float>& v_true, const std::vector<float>& v_predicted) {
+	float loss = 0;
+	for (int i = 0; i < v_predicted.size(); i++) {
+		float true_clipped = clip(1e-7, 1 - 1e-7, v_predicted[i]);
+		loss += v_true[i] * std::log(true_clipped);
+	}
+	return -loss;
 }
 
 Network_state Network::construct_network_state() {
