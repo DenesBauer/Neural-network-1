@@ -8,15 +8,6 @@ float clamp(float min, float max, float x) {
 	return std::max(min, std::min(max, x));
 }
 
-
-float Network::relu(float x) {
-	return std::max(x, 0.1f * x);
-}
-
-float Network::sigmoid(float x) {
-	return 1 / (1 + std::exp(-x));
-}
-
 //The first layer is only created for interoperability with calulations with data, representing the input layer
 Network::Network(std::vector<int> layers) {
 	//Symbolical input layer
@@ -32,8 +23,39 @@ Network::Network(std::vector<int> layers) {
 	}
 }
 
+float Network::relu(float x) {
+	return std::max(x, 0.1f * x);
+}
+
+float Network::relu_derivative(float x) {
+	if (x >= 0) {
+		return 1;
+	}
+	else {
+		return 0.1;
+	}
+}
+
+float Network::logistic(float x) {
+	return 1 / (1 + std::exp(-x));
+}
+
+float Network::logistic_derivative(float x) {
+	return logistic(x) * (1  - logistic(x));
+}
+
+float Network::activate(float x) {
+	return logistic(x);
+}
+
+float Network::activate_derivative(float x) {
+	return logistic_derivative(x);
+}
+
+
+
 Network_state Network::construct_network_state() {
-	Network_state network_state{ std::vector<std::vector<float>> ()};
+	Network_state network_state{ std::vector<std::vector<float>>() };
 	network_state.network_state.push_back(std::vector<float>());
 	for (int i = 0; i < network[1][0].weights.size();i++) {
 		network_state[0].push_back(NULL);
@@ -48,63 +70,75 @@ Network_state Network::construct_network_state() {
 	return network_state;
 }
 
+Network_gradient Network::construct_network_gradient() {
+	Network_gradient gradient{
+		std::vector<std::vector<float>>(network.size(),std::vector<float>()),
+		std::vector<std::vector<std::vector<float>>>(network.size(),std::vector<std::vector<float>>())
+	};
+	for (int n_layer = 0; n_layer < network.size(); n_layer++) {
+		gradient.biases[n_layer] = std::vector<float>(network[n_layer].size(), 0);
+		gradient.weights[n_layer] = std::vector<std::vector<float>>(network[n_layer].size(), std::vector<float>());
+
+		for (int n_neuron = 0; n_neuron < network[n_layer].size(); n_neuron++) {
+			gradient.weights[n_layer][n_neuron] = std::vector<float>(network[n_layer][n_neuron].size());
+		}
+	}
+	return gradient;
+}
+
 Network_state Network::execute(std::vector<float> input_layer) {
-	Network_state network_state = construct_network_state();
-	network_state[0] = input_layer;
+	Network_state eval = construct_network_state();
+	eval[0] = input_layer;
 	for (int n_layer = 1; n_layer < network.size(); n_layer++) {
 		for (int n_neuron = 0; n_neuron < network[n_layer].size(); n_neuron++) {
+			float sum = network[n_layer][n_neuron].bias;
 			for (int n_connection = 0; n_connection < network[n_layer][n_neuron].weights.size(); n_connection++) {
-				network_state[n_layer][n_neuron] += relu(network[n_layer][n_neuron].bias
-					+ network[n_layer][n_neuron][n_connection] * network_state[n_layer - 1][n_connection]);
+				sum += network[n_layer][n_neuron][n_connection] * activate(eval[n_layer - 1][n_connection]);
 			}
+			eval[n_layer][n_neuron] = sum;
 		}
 	}
-	return network_state;
+	return eval;
 }
 
-Network_state Network::calculate_errors(std::vector<float> expected_output, Network_state network_state) {
-	Network_state error_state = construct_network_state();
-	for (int n_neuron = 0; n_neuron < network_state[network_state.size() - 1].size();n_neuron++) {
-		error_state[network_state.size() - 1][n_neuron] = expected_output[n_neuron] - network_state[network_state.size() - 1][n_neuron];
+Network_state Network::calculate_errors(std::vector<float> expected_output, Network_state eval) {
+	Network_state error = construct_network_state();
+	for (int n_neuron = 0; n_neuron < network[network.size() - 1].size();n_neuron++) {
+		error[network.size() - 1][n_neuron] = eval[eval.size() - 1][n_neuron] - expected_output[n_neuron];
 	}
-	for (int n_layer = network_state.size() - 2;n_layer >= 0;n_layer--) {
-		for (int n_neuron = 0; n_neuron < network_state[n_layer].size();n_neuron++) {
-			float error = 0;
-			for (int n_forward_connection = 0; n_forward_connection < network_state[n_layer+1].size();n_forward_connection++) {
-				//Mind that in 'network' layer 0 is the first layer after the input layer
-				error += error_state[n_layer + 1][n_forward_connection] * network[n_layer + 1][n_forward_connection][n_neuron];
+	for (int n_layer = network.size() - 2; n_layer >= 0; n_layer--) {
+		for (int n_neuron = 0; n_neuron < network[n_layer].size();n_neuron++) {
+			for (int n_forward_connection = 0; n_forward_connection < network[n_layer + 1].size();n_forward_connection++) {
+				error[n_layer][n_neuron] += activate_derivative(eval[n_layer][n_neuron]) *
+					error[n_layer + 1][n_forward_connection] * network[n_layer + 1][n_forward_connection][n_neuron];
 			}
+
 		}
 	}
-	return error_state;
+	return error;
 }
 
 
-Network_gradient Network::calculate_gradients(Network_state error_state) {
-	Network_gradient network_gradient{ std::vector<std::vector<float>>(), std::vector<std::vector<std::vector<float>>>() };
-	network_gradient.biases.push_back(std::vector<float>());
-	network_gradient.weights.push_back(std::vector<std::vector<float>>());
-	for (int n_layer = 1; n_layer < error_state.size(); n_layer++) {
-		network_gradient.biases.push_back(std::vector<float>());
-		network_gradient.weights.push_back(std::vector<std::vector<float>>());
-		for (int n_neuron = 0; n_neuron < error_state[n_layer].size();n_neuron++) {
-			network_gradient.weights[n_layer].push_back(std::vector<float>());
-
-			network_gradient.biases[n_layer].push_back(error_state[n_layer][n_neuron]);
-			for (int n_connection = 0; n_connection < network[n_layer][n_neuron].weights.size();n_connection++) {
-				network_gradient.weights[n_layer][n_neuron].push_back(network[n_layer][n_neuron][n_connection] * error_state[n_layer - 1][n_connection]);
+Network_gradient Network::calculate_gradients(Network_state eval, Network_state error) {
+	Network_gradient gradient = construct_network_gradient();
+	for (int n_layer = 1; n_layer < network.size(); n_layer++) {
+		for (int n_neuron = 0; n_neuron < network[n_layer].size();n_neuron++) {
+			gradient.biases[n_layer][n_neuron] = error[n_layer][n_neuron];
+			for (int n_connection = 0; n_connection < network[n_layer][n_neuron].size();n_connection++) {
+				gradient.weights[n_layer][n_neuron][n_connection] =
+					eval[n_layer - 1][n_connection] * error[n_layer][n_neuron];
 			}
 		}
 	}
-	return network_gradient;
+	return gradient;
 }
 
 void Network::apply_gradient(float learning_rate, Network_gradient network_gradient) {
-	for (int n_layer = 1;n_layer < network_gradient.weights.size();n_layer++) {
+	for (int n_layer = 1; n_layer < network_gradient.weights.size(); n_layer++) {
 		for (int n_neuron = 0; n_neuron < network_gradient.weights[n_layer].size();n_neuron++) {
 			network[n_layer][n_neuron].bias += learning_rate * network_gradient.biases[n_layer][n_neuron];
 			for (int n_connection = 0; n_connection < network_gradient.weights[n_layer][n_neuron].size(); n_connection++) {
-				network[n_layer][n_neuron][n_connection] += learning_rate * network_gradient.weights[n_layer][n_neuron][n_connection];
+				network[n_layer][n_neuron][n_connection] -= learning_rate * network_gradient.weights[n_layer][n_neuron][n_connection];
 			}
 		}
 	}
@@ -119,4 +153,17 @@ void Network::randomize_network() {
 			}
 		}
 	}
+}
+
+int Network::get_output_max(Network_state network_state) {
+	float max = -INFINITY;
+	int max_id = 0;
+	for (int i = 0;i < network_state[network_state.size() - 1].size();i++) {
+		float v = network_state[network_state.size() - 1][i];
+		if (v > max) {
+			max_id = i;
+			max = v;
+		}
+	}
+	return max_id;
 }
