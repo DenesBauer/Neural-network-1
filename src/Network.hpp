@@ -39,6 +39,7 @@ public:
 	std::vector < std::vector<Neuron>> network;
 	Network(std::vector<int> layers);
 	float relu(float x);
+	float sigmoid(float x);
 	Network_state construct_network_state();
 	Network_state execute(std::vector<float> input_layer);
 	Network_state calculate_errors(std::vector<float> expected_output, Network_state network_state);

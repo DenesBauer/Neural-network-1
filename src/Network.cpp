@@ -8,6 +8,15 @@ float clamp(float min, float max, float x) {
 	return std::max(min, std::min(max, x));
 }
 
+
+float Network::relu(float x) {
+	return std::max(x, 0.1f * x);
+}
+
+float Network::sigmoid(float x) {
+	return 1 / (1 + std::exp(-x));
+}
+
 //The first layer is only created for interoperability with calulations with data, representing the input layer
 Network::Network(std::vector<int> layers) {
 	//Symbolical input layer
@@ -21,10 +30,6 @@ Network::Network(std::vector<int> layers) {
 			}
 		}
 	}
-}
-
-float Network::relu(float x) {
-	return std::max(x, 0.1f * x);
 }
 
 Network_state Network::construct_network_state() {
